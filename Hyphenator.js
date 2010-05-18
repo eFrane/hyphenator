@@ -161,9 +161,7 @@ var Hyphenator = (function (window) {
 	 * @description
 	 * documentLoaded is true, when the DOM has been loaded. This is set by runOnContentLoaded
 	 */
-	documentLoaded = {
-		parent: false
-	},
+	documentLoaded = false,
 	
 	/**
 	 * @name Hyphenator-dontHyphenate
@@ -458,12 +456,12 @@ var Hyphenator = (function (window) {
 	 * @type function
 	 * @private
 	 */		
-	selectorFunction = function (DocElem) {
+	selectorFunction = function () {
 		var tmp, el = [], i, l;
-		if (DocElem.getElementsByClassName) {
-			el = DocElem.getElementsByClassName(hyphenateClass);
+		if (document.getElementsByClassName) {
+			el = document.getElementsByClassName(hyphenateClass);
 		} else {
-			tmp = DocElem.getElementsByTagName('*');
+			tmp = document.getElementsByTagName('*');
 			l = tmp.length;
 			for (i = 0; i < l; i++)
 			{
@@ -593,33 +591,16 @@ var Hyphenator = (function (window) {
 	 * @param function-object the function to call onDOMContentLoaded
 	 * @private
 	 */
-	runOnContentLoaded = function (f, context, framename) {
-		context = context || window;
-		framename = framename || "parent";
+	runOnContentLoaded = function (w, f) {
 		var DOMContentLoaded, toplevel;
-		if (documentLoaded[framename]) {
-			f(context.document);
+		if (documentLoaded) {
+			f();
 			return;
 		}
-				
-		function init(framename) {
-			framename = framename || "parent";
-			var fc, i;
-			if (!documentLoaded[framename]) {
-				documentLoaded[framename] = true;
-				fc = window.frames.length;
-				
-				if (fc > 0) {
-					window.setTimeout(function () {
-						for (i = 0; i < fc; i++) {
-							documentLoaded['frame'+i] = false;
-							f(window.frames[i].document);
-						}
-					}, 100);
-						//runOnContentLoaded(f, window.frames[i], 'frame'+i);					
-				} else {
-					f(context.document);
-				}
+		function init() {
+			if (!documentLoaded) {
+				documentLoaded = true;
+				f();
 			}
 		}
 		
@@ -627,29 +608,30 @@ var Hyphenator = (function (window) {
 			try {
 				// If IE is used, use the trick by Diego Perini
 				// http://javascript.nwbox.com/IEContentLoaded/
-				context.document.documentElement.doScroll("left");
+				document.documentElement.doScroll("left");
 			} catch (error) {
 				setTimeout(doScrollCheck, 1);
 				return;
 			}
 		
 			// and execute any waiting functions
-			init(framename);
+			init();
 		}
 
+		
 		// Cleanup functions for the document ready method
 		if (document.addEventListener) {
-			DOMContentLoaded = function (framename) {
-				context.document.removeEventListener("DOMContentLoaded", DOMContentLoaded, false);
-				init(framename);
+			DOMContentLoaded = function () {
+				document.removeEventListener("DOMContentLoaded", DOMContentLoaded, false);
+				init();
 			};
 		
 		} else if (document.attachEvent) {
-			DOMContentLoaded = function (framename) {
+			DOMContentLoaded = function () {
 				// Make sure body exists, at least, in case IE gets a little overzealous (ticket #5443).
-				if (context.document.readyState === "complete") {
-					context.document.detachEvent("onreadystatechange", DOMContentLoaded);
-					init(framename);
+				if (document.readyState === "complete") {
+					document.detachEvent("onreadystatechange", DOMContentLoaded);
+					init();
 				}
 			};
 		}
@@ -657,26 +639,19 @@ var Hyphenator = (function (window) {
 		// Mozilla, Opera and webkit nightlies currently support this event
 		if (document.addEventListener) {
 			// Use the handy event callback
-			context.document.addEventListener("DOMContentLoaded", function () {
-				DOMContentLoaded();
-			}, false);
+			document.addEventListener("DOMContentLoaded", DOMContentLoaded, false);
+			
 			// A fallback to window.onload, that will always work
-			context.addEventListener("load", function() {
-				init(framename);
-			}, false);
+			window.addEventListener("load", init, false);
 
 		// If IE event model is used
 		} else if (document.attachEvent) {
 			// ensure firing before onload,
 			// maybe late but safe also for iframes
-			context.document.attachEvent("onreadystatechange", function () {
-				DOMContentLoaded();
-			});
+			document.attachEvent("onreadystatechange", DOMContentLoaded);
 			
 			// A fallback to window.onload, that will always work
-			window.attachEvent("onload", function() {
-				init(framename);
-			});
+			window.attachEvent("onload", init);
 
 			// If IE and not a frame
 			// continually check to see if the document is ready
@@ -743,10 +718,9 @@ var Hyphenator = (function (window) {
 	 * If the retrieved language is in the object {@link Hyphenator-supportedLang} it is copied to {@link Hyphenator-mainLanguage}
 	 * @private
 	 */		
-	autoSetMainLanguage = function (context) {
-		context = context || window.document;
-		var el = context.getElementsByTagName('html')[0],
-			m = context.getElementsByTagName('meta'),
+	autoSetMainLanguage = function () {
+		var el = document.getElementsByTagName('html')[0],
+			m = document.getElementsByTagName('meta'),
 			i, text, lang, e, ul;
 		mainLanguage = getLang(el);
 		if (!mainLanguage) {
@@ -796,8 +770,7 @@ var Hyphenator = (function (window) {
 	 * the child-Nodes aren't of type 1
 	 * @private
 	 */		
-	gatherDocumentInfos = function (context) {
-		context = context || window.document;
+	gatherDocumentInfos = function () {
 		var elToProcess, tmp, i = 0,
 		process = function (el, hide, lang) {
 			var n, i = 0, hyphenatorSettings = {};
@@ -835,10 +808,10 @@ var Hyphenator = (function (window) {
 			}
 		};
 		if (Hyphenator.isBookmarklet()) {
-			elToProcess = context.getElementsByTagName('body')[0];
+			elToProcess = document.getElementsByTagName('body')[0];
 			process(elToProcess, false, mainLanguage);
 		} else {
-			elToProcess = selectorFunction(context);
+			elToProcess = selectorFunction();
 			while (!!(tmp = elToProcess[i++]))
 			{
 				process(tmp, true);
@@ -1011,8 +984,7 @@ var Hyphenator = (function (window) {
 	 * @param function-object callback to call, when all patterns are loaded
 	 * @private
 	 */
-	prepare = function (callback, context) {
-		context = context;
+	prepare = function (callback) {
 		var lang, docLangEmpty = true, interval;
 		if (!enableRemoteLoading) {
 			for (lang in Hyphenator.languages) {
@@ -1070,23 +1042,22 @@ var Hyphenator = (function (window) {
 	 * @see Hyphenator.config
 	 * @private
 	 */		
-	toggleBox = function (s, context) {
-		context = context || window.document;
+	toggleBox = function (s) {
 		var myBox, bdy, myIdAttribute, myTextNode, myClassAttribute;
-		if (!!(myBox = context.getElementById('HyphenatorToggleBox'))) {
+		if (!!(myBox = document.getElementById('HyphenatorToggleBox'))) {
 			if (s) {
 				myBox.firstChild.data = 'Hy-phe-na-ti-on';
 			} else {
 				myBox.firstChild.data = 'Hyphenation';
 			}
 		} else {
-			bdy = context.getElementsByTagName('body')[0];
+			bdy = document.getElementsByTagName('body')[0];
 			myBox = createElem('div');
-			myIdAttribute = context.createAttribute('id');
+			myIdAttribute = document.createAttribute('id');
 			myIdAttribute.nodeValue = 'HyphenatorToggleBox';
-			myClassAttribute = context.createAttribute('class');
+			myClassAttribute = document.createAttribute('class');
 			myClassAttribute.nodeValue = dontHyphenateClass;
-			myTextNode = context.createTextNode('Hy-phe-na-ti-on');
+			myTextNode = document.createTextNode('Hy-phe-na-ti-on');
 			myBox.appendChild(myTextNode);
 			myBox.setAttributeNode(myIdAttribute);
 			myBox.setAttributeNode(myClassAttribute);
@@ -1343,9 +1314,8 @@ var Hyphenator = (function (window) {
 	 * @private
 	 * @param null
 	 */
-	registerOnCopy = function (context) {
-		context = context || window.document;
-		var body = context.getElementsByTagName('body')[0],
+	registerOnCopy = function () {
+		var body = document.getElementsByTagName('body')[0],
 		shadow,
 		selection,
 		range,
@@ -1353,7 +1323,7 @@ var Hyphenator = (function (window) {
 		restore,
 		oncopyHandler = function (e) {
 			//create a hidden shadow element
-			shadow = context.createElement("div");
+			shadow = document.createElement("div");
 			shadow.style.overflow = 'hidden';
 			shadow.style.position = 'absolute';
 			shadow.style.top = '-5000px';
@@ -1380,7 +1350,7 @@ var Hyphenator = (function (window) {
 				};
 			} else {
 				// IE
-				selection = context.selection;
+				selection = document.selection;
 				range = selection.createRange();
 				shadow.innerHTML = range.htmlText;
 				removeHyphenationFromElement(shadow);
@@ -1580,29 +1550,27 @@ var Hyphenator = (function (window) {
          *   Hyphenator.run();
          * &lt;/script&gt;
          */
-		run: function (context) {
-			context = context || window;
-			var process = function (context) {
-				context = context || window.document;
+		run: function () {
+			var process = function () {
 				try {
-					autoSetMainLanguage(context);
-					gatherDocumentInfos(context);
-					prepare(hyphenateDocument, context);
+					autoSetMainLanguage();
+					gatherDocumentInfos();
+					prepare(hyphenateDocument);
 					if (displayToggleBox) {
-						toggleBox(true, context);
+						toggleBox(true);
 					}
 					if (safeCopy) {
-						registerOnCopy(context);
+						registerOnCopy();
 					}
 				} catch (e) {
 					onError(e);
 				}
 			};
-			if (!documentLoaded.parent) {
-					runOnContentLoaded(process, context);
+			if (!documentLoaded) {
+				runOnContentLoaded(window, process);
 			}
-			if (Hyphenator.isBookmarklet() || documentLoaded.parent) {
-				process(context.document);
+			if (Hyphenator.isBookmarklet() || documentLoaded) {
+				process();
 			}
 		},
 		
@@ -1731,11 +1699,5 @@ var Hyphenator = (function (window) {
 }(window));
 if (Hyphenator.isBookmarklet()) {
 	Hyphenator.config({displaytogglebox: true, intermediatestate: 'visible'});
-	if (window.frames.length > 0) {
-		for (var i = 0; i < window.frames.length; i++) {
-			Hyphenator.run(window.frames[i]);
-		}
-	} else {
-		Hyphenator.run(window);
-	}
+	Hyphenator.run();
 }
