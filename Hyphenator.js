@@ -1,5 +1,5 @@
 ﻿/*!
- *  Hyphenator 3.0.0 - client side hyphenation for webbrowsers
+ *  Hyphenator X.Y.Z - client side hyphenation for webbrowsers
  *  Copyright (C) 2010  Mathias Nater, Zürich (mathias at mnn dot ch)
  *  Project and Source hosted on http://code.google.com/p/hyphenator/
  * 
@@ -30,7 +30,7 @@
  * @fileOverview
  * A script that does hyphenation in (X)HTML files
  * @author Mathias Nater, <a href = "mailto:mathias@mnn.ch">mathias@mnn.ch</a>
- * @version 3.0.0
+ * @version X.Y.Z
   */
 
 /**
@@ -233,7 +233,7 @@ var Hyphenator = (function (window) {
 	 * @private
 	 * @see Hyphenator-hyphenateElement
 	 */
-	dontHyphenate = {'script': true, 'code': true, 'pre': true, 'img': true, 'br': true, 'samp': true, 'kbd': true, 'var': true, 'abbr': true, 'acronym': true, 'sub': true, 'sup': true, 'button': true, 'option': true, 'label': true, 'textarea': true},
+	dontHyphenate = {'script': true, 'code': true, 'pre': true, 'img': true, 'br': true, 'samp': true, 'kbd': true, 'var': true, 'abbr': true, 'acronym': true, 'sub': true, 'sup': true, 'button': true, 'option': true, 'label': true, 'textarea': true, 'input': true},
 
 	/**
 	 * @name Hyphenator-enableCache
@@ -599,7 +599,8 @@ var Hyphenator = (function (window) {
 	 * @name Hyphenator-safeCopy
 	 * @fieldOf Hyphenator
 	 * @description
-	 * Defines wether work-around for copy issues is ative or not
+	 * Defines wether work-around for copy issues is active or not
+	 * Not supported by Opera (no onCopy handler)
 	 * @type boolean
 	 * @default true
 	 * @private
@@ -1065,7 +1066,7 @@ var Hyphenator = (function (window) {
 	 * @param string the language ob the lang-obj
 	 */		
 	prepareLanguagesObj = function (lang) {
-		var lo = Hyphenator.languages[lang], wrd, tmp;
+		var lo = Hyphenator.languages[lang], wrd;
 		if (!lo.prepared) {	
 			if (enableCache) {
 				lo.cache = {};
@@ -1096,10 +1097,7 @@ var Hyphenator = (function (window) {
 			lo.prepared = true;
 		}
 		if (storage) {
-			tmp = lo.genRegExp;
-			lo.genRegExp = lo.genRegExp.source; //RegExp are not stringified -> store the source
 			storage.setItem(lang, JSON.stringify(lo));
-			lo.genRegExp = tmp;
 		}
 		
 	},
@@ -1119,7 +1117,7 @@ var Hyphenator = (function (window) {
 	 * @private
 	 */
 	prepare = function (callback) {
-		var lang, docLangEmpty = true, interval;
+		var lang, languagesToLoad = 0, interval, tmp1, tmp2;
 		if (!enableRemoteLoading) {
 			for (lang in Hyphenator.languages) {
 				if (Hyphenator.languages.hasOwnProperty(lang)) {
@@ -1134,21 +1132,33 @@ var Hyphenator = (function (window) {
 		state = 1;
 		for (lang in docLanguages) {
 			if (docLanguages.hasOwnProperty(lang)) {
+				++languagesToLoad;
 				if (storage) {
 					if (storage.getItem(lang)) {
 						Hyphenator.languages[lang] = JSON.parse(storage.getItem(lang));
-						//reconstruct the regExp from string
-						Hyphenator.languages[lang].genRegExp = new RegExp(Hyphenator.languages[lang].genRegExp, 'gi');
+						//Replace exceptions since they may have been changed:
+						if (exceptions.hasOwnProperty(lang)) {
+							tmp1 = convertExceptionsToObject(exceptions[lang]);
+							for (tmp2 in tmp1) {
+								if (tmp1.hasOwnProperty(tmp2)) {
+									Hyphenator.languages[lang].exceptions[tmp2] = tmp1[tmp2];
+								}
+							}
+							delete exceptions[lang];
+						}
+						//Replace genRegExp since it may have been changed:
+						tmp1 = '[\\w' + Hyphenator.languages[lang].specialChars + '@' + String.fromCharCode(173) + '-]{' + min + ',}';
+						Hyphenator.languages[lang].genRegExp = new RegExp('(' + url + ')|(' + mail + ')|(' + tmp1 + ')', 'gi');
+						
 						delete docLanguages[lang];
-						docLangEmpty = true;
+						--languagesToLoad;
 						continue;
 					}
 				} 
 				loadPatterns(lang);
-				docLangEmpty = false;
 			}
 		}
-		if (docLangEmpty) {
+		if (languagesToLoad === 0) {
 			state = 2;
 			callback();
 			return;
@@ -1473,25 +1483,29 @@ var Hyphenator = (function (window) {
 			e = e || window.event;
 			var target = e.target || e.srcElement,
 			currDoc = target.ownerDocument,
-			body = currDoc.getElementsByTagName('body')[0];
+			body = currDoc.getElementsByTagName('body')[0],
+			targetWindow = 'defaultView' in currDoc ? currDoc.defaultView : currDoc.parentWindow;
+			if (target.tagName && dontHyphenate[target.tagName.toLowerCase()]) {
+				//Safari needs this
+				return;
+			}
 			//create a hidden shadow element
-			shadow = currDoc.createElement("div");
+			shadow = currDoc.createElement('div');
 			shadow.style.overflow = 'hidden';
 			shadow.style.position = 'absolute';
 			shadow.style.top = '-5000px';
 			shadow.style.height = '1px';
 			body.appendChild(shadow);
-			
 			if (window.getSelection) {
 				//FF3, Webkit
-				selection = currDoc.getSelection();
+				selection = targetWindow.getSelection();
 				range = selection.getRangeAt(0);
 				shadow.appendChild(range.cloneContents());
 				removeHyphenationFromElement(shadow);
 				selection.selectAllChildren(shadow);
 				restore = function () {
 					shadow.parentNode.removeChild(shadow);
-					if (currDoc.getSelection().setBaseAndExtent) {
+					if (targetWindow.getSelection().setBaseAndExtent) {
 						selection.setBaseAndExtent(
 							range.startContainer,
 							range.startOffset,
@@ -1502,7 +1516,7 @@ var Hyphenator = (function (window) {
 				};
 			} else {
 				// IE
-				selection = currDoc.selection;
+				selection = targetWindow.document.selection;
 				range = selection.createRange();
 				shadow.innerHTML = range.htmlText;
 				removeHyphenationFromElement(shadow);
@@ -1540,7 +1554,7 @@ var Hyphenator = (function (window) {
 		 * minor release: new languages, improvements
 		 * @public
          */		
-		version: '3.0.0',
+		version: 'X.Y.Z',
 		
 		/**
 		 * @name Hyphenator.languages
